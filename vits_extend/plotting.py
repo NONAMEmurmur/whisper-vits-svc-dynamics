@@ -10,8 +10,10 @@ import matplotlib.pylab as plt
 
 def save_figure_to_numpy(fig):
     # save it to a numpy array.
-    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    data = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+    w, h = fig.canvas.get_width_height()
+    # 4チャンネル(RGBA)として一度形を整えてから、最初の3チャンネル(RGB)だけを抜き出す
+    data = data.reshape((h, w, 4))[:, :, :3]
     data = np.transpose(data, (2, 0, 1))
     return data
 

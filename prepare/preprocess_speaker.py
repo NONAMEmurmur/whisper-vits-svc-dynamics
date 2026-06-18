@@ -46,7 +46,14 @@ def process_wav(wav_file, dataset_path, output_path, args, speaker_encoder_ap, s
 
 
 def extract_speaker_embeddings(wav_files, dataset_path, output_path, args, speaker_encoder_ap, speaker_encoder, concurrency):
-    bound_process_wav = partial(process_wav, dataset_path=dataset_path, output_path=output_path, args=args, speaker_encoder_ap=speaker_encoder_ap, speaker_encoder=speaker_encoder)
+    bound_process_wav = partial(
+        process_wav,
+        dataset_path=dataset_path,
+        output_path=output_path,
+        args=args,
+        speaker_encoder_ap=speaker_encoder_ap,
+        speaker_encoder=speaker_encoder
+    )
 
     with ThreadPool(concurrency) as pool:
         list(tqdm(pool.imap(bound_process_wav, wav_files), total=len(wav_files)))
@@ -63,14 +70,22 @@ if __name__ == "__main__":
         "output_path", type=str, help="path for output speaker/speaker_wavs.npy."
     )
     parser.add_argument("--use_cuda", type=bool, help="flag to set cuda.", default=True)
-    parser.add_argument("-t", "--thread_count", help="thread count to process, set 0 to use all cpu cores", dest="thread_count", type=int, default=1)
+    parser.add_argument(
+        "-t", "--thread_count",
+        help="thread count to process, set 0 to use all cpu cores",
+        dest="thread_count",
+        type=int,
+        default=1
+    )
     args = parser.parse_args()
     dataset_path = args.dataset_path
     output_path = args.output_path
     thread_count = args.thread_count
+
     # model
     args.model_path = os.path.join("speaker_pretrain", "best_model.pth.tar")
     args.config_path = os.path.join("speaker_pretrain", "config.json")
+
     # config
     config_dict = read_json(args.config_path)
 
@@ -89,9 +104,15 @@ if __name__ == "__main__":
 
     # preprocess
     speaker_encoder_ap = AudioProcessor(**config.audio)
-    # normalize the input audio level and trim silences
-    speaker_encoder_ap.do_sound_norm = True
-    speaker_encoder_ap.do_trim_silence = True
+
+    # 元は True / True だったが、
+    # 今回は本流のラウドネス観と揃えるため両方切る
+    speaker_encoder_ap.do_sound_norm = False
+    speaker_encoder_ap.do_trim_silence = False
+
+    print("AFTER OVERRIDE:")
+    print("do_sound_norm =", speaker_encoder_ap.do_sound_norm)
+    print("do_trim_silence =", speaker_encoder_ap.do_trim_silence)
 
     wav_files = get_spk_wavs(dataset_path, output_path)
 
@@ -100,4 +121,12 @@ if __name__ == "__main__":
     else:
         process_num = thread_count
 
-    extract_speaker_embeddings(wav_files, dataset_path, output_path, args, speaker_encoder_ap, speaker_encoder, process_num)
+    extract_speaker_embeddings(
+        wav_files,
+        dataset_path,
+        output_path,
+        args,
+        speaker_encoder_ap,
+        speaker_encoder,
+        process_num
+    )

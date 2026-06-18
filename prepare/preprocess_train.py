@@ -1,5 +1,4 @@
 import os
-import random
 
 
 def print_error(info):
@@ -7,20 +6,24 @@ def print_error(info):
 
 
 IndexBySinger = False
+
 if __name__ == "__main__":
     os.makedirs("./files/", exist_ok=True)
 
     rootPath = "./data_svc/waves-32k/"
     all_items = []
+
     for spks in os.listdir(f"./{rootPath}"):
         if not os.path.isdir(f"./{rootPath}/{spks}"):
             continue
+
         print(f"./{rootPath}/{spks}")
+
         for file in os.listdir(f"./{rootPath}/{spks}"):
             if file.endswith(".wav"):
                 file = file[:-4]
 
-                if (IndexBySinger == False):
+                if IndexBySinger is False:
                     path_spk = f"./data_svc/speaker/{spks}/{file}.spk.npy"
                 else:
                     path_spk = f"./data_svc/singer/{spks}.spk.npy"
@@ -30,7 +33,14 @@ if __name__ == "__main__":
                 path_pitch = f"./data_svc/pitch/{spks}/{file}.pit.npy"
                 path_hubert = f"./data_svc/hubert/{spks}/{file}.vec.npy"
                 path_whisper = f"./data_svc/whisper/{spks}/{file}.ppg.npy"
+
+                path_eng = f"./data_svc/energy/{spks}/{file}.eng.npy"
+                path_deng = f"./data_svc/energy/{spks}/{file}.deng.npy"
+                path_prd = f"./data_svc/pitch/{spks}/{file}.prd.npy"
+                path_flat = f"./data_svc/flatness/{spks}/{file}.flat.npy"
+
                 has_error = 0
+
                 if not os.path.isfile(path_spk):
                     print_error(path_spk)
                     has_error = 1
@@ -49,20 +59,27 @@ if __name__ == "__main__":
                 if not os.path.isfile(path_whisper):
                     print_error(path_whisper)
                     has_error = 1
+                if not os.path.isfile(path_eng):
+                    print_error(path_eng)
+                    has_error = 1
+                if not os.path.isfile(path_deng):
+                    print_error(path_deng)
+                    has_error = 1
+                if not os.path.isfile(path_prd):
+                    print_error(path_prd)
+                    has_error = 1
+                if not os.path.isfile(path_flat):
+                    print_error(path_flat)
+                    has_error = 1
+
                 if has_error == 0:
                     all_items.append(
-                        f"{path_wave}|{path_spec}|{path_pitch}|{path_hubert}|{path_whisper}|{path_spk}")
+                        f"{path_wave}|{path_spec}|{path_pitch}|{path_hubert}|{path_whisper}|{path_spk}|{path_eng}|{path_deng}|{path_prd}|{path_flat}"
+                    )
 
-    random.shuffle(all_items)
-    valids = all_items[:10]
-    valids.sort()
-    trains = all_items[10:]
-    # trains.sort()
-    fw = open("./files/valid.txt", "w", encoding="utf-8")
-    for strs in valids:
-        print(strs, file=fw)
-    fw.close()
-    fw = open("./files/train.txt", "w", encoding="utf-8")
-    for strs in trains:
-        print(strs, file=fw)
-    fw.close()
+    with open("./files/train.txt", "w", encoding="utf-8") as fw:
+        for strs in all_items:
+            print(strs, file=fw)
+
+    print(f"train items: {len(all_items)}")
+    print("validation_files should point to files/train.txt")

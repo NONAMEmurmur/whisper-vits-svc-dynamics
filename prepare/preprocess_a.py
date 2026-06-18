@@ -8,10 +8,18 @@ from scipy.io import wavfile
 
 
 def resample_wave(wav_in, wav_out, sample_rate):
+    # load with target sample rate
     wav, _ = librosa.load(wav_in, sr=sample_rate)
-    wav = wav / np.abs(wav).max() * 0.6
-    wav = wav / max(0.01, np.max(np.abs(wav))) * 32767 * 0.6
-    wavfile.write(wav_out, sample_rate, wav.astype(np.int16))
+
+    # ❌ ピークノーマライズを完全撤去
+    # wav = wav / np.abs(wav).max() * 0.6
+    # wav = wav / max(0.01, np.max(np.abs(wav))) * 32767 * 0.6
+
+    # ✔ そのまま int16 に変換（クリッピングのみ注意）
+    wav = np.clip(wav, -1.0, 1.0)
+    wav = (wav * 32767.0).astype(np.int16)
+
+    wavfile.write(wav_out, sample_rate, wav)
 
 
 def process_file(file, wavPath, spks, outPath, sr):
@@ -24,7 +32,10 @@ def process_files_with_thread_pool(wavPath, spks, outPath, sr, thread_num=None):
     files = [f for f in os.listdir(f"./{wavPath}/{spks}") if f.endswith(".wav")]
 
     with ThreadPoolExecutor(max_workers=thread_num) as executor:
-        futures = {executor.submit(process_file, file, wavPath, spks, outPath, sr): file for file in files}
+        futures = {
+            executor.submit(process_file, file, wavPath, spks, outPath, sr): file
+            for file in files
+        }
 
         for future in tqdm(as_completed(futures), total=len(futures), desc=f'Processing {sr} {spks}'):
             future.result()
@@ -35,7 +46,13 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--wav", help="wav", dest="wav", required=True)
     parser.add_argument("-o", "--out", help="out", dest="out", required=True)
     parser.add_argument("-s", "--sr", help="sample rate", dest="sr", type=int, required=True)
-    parser.add_argument("-t", "--thread_count", help="thread count to process, set 0 to use all cpu cores", dest="thread_count", type=int, default=1)
+    parser.add_argument(
+        "-t", "--thread_count",
+        help="thread count to process, set 0 to use all cpu cores",
+        dest="thread_count",
+        type=int,
+        default=1
+    )
 
     args = parser.parse_args()
     print(args.wav)
@@ -55,4 +72,11 @@ if __name__ == "__main__":
                 process_num = os.cpu_count() // 2 + 1
             else:
                 process_num = args.thread_count
-            process_files_with_thread_pool(wavPath, spks, outPath, args.sr, process_num)
+
+            process_files_with_thread_pool(
+                wavPath,
+                spks,
+                outPath,
+                args.sr,
+                process_num
+            )

@@ -1,4 +1,191 @@
 <div align="center">
+  <a href="./README_JP.md">日本語</a> |
+  <a href="./README.md">English</a> |
+  <a href="./README_ZH.md">简体中文</a>
+</div>
+
+# whisper-vits-svc Acoustic Dynamics Fork (声学动态分支版)
+
+**实验性扩展分支**
+基于 whisper-vits-svc，添加了修改以将演唱表现力（动态、呼吸感、爆发力、声音核心）显式重新注入模型中。
+
+这个分支的目的并不仅仅是“改善音色”。
+相反，它的目的是**将现有SVC在训练过程中容易平均化并丢弃的“演唱表现信息”，作为显式特征重新注入到模型中**。
+
+如果您只需要原版的 whisper-vits-svc，请使用原仓库。此分支在显式提供动态特征方面具有强烈的主观意见（opinionated）。
+
+---
+
+## 使用方法（推理） — 推荐两阶段推理
+
+在原仓库中，推理（基频解析和音频生成）可以一次性完成，但在实际运用（而非仅仅实验）中存在以下不便：
+* 很难自由地使用 `--out` 指定文件名。
+* 无法保存基频解析结果。每次更改后处理参数（如 `--uv-th` / `--max-gap-ms` / `--softness`）时，都必须重新运行繁重的 CREPE/RMVPE，以前的结果会被覆盖，这是一个痛点。
+* 难以重用微调后的基频或将其应用于其他模型。
+
+因此，此分支为了**注重实用性，更改为两阶段推理**：
+*(虽然保留了省略 `--pit` 的单次运行模式，但如果想重用和调整基频，强烈推荐使用两阶段推理。)*
+
+### Stage 1: 基频 + 周期性 (Periodicity) 提取（繁重工作只需一次）
+
+```bash
+python pitch/inference.py \
+  -w Unaccompanied.wav \
+  -p Unaccompanied001.csv \
+  --method crepe \          # 或 rmvpe
+  --uv-th 0.0000000000015 \
+  --max-gap-ms 3 \
+  --post \                  # soft gate + gap fill 等后处理
+  --smooth 1                # 注意：根据需要，这和 --post 可能是可选的。
+
+```
+
+* `output.pit.csv` (F0) 和 `output.prd.npy` (Periodicity) 将**自动保存在同一位置**。
+* 对于呼吸成分较多的模型，我们确认使用极小的 `--uv-th` 值可以获得更好的结果。由于这取决于模型与输入音频的兼容性，因此很难设定一个通用推荐值。（有时 `--uv-th 0.015` 也能获得良好的结果）
+
+### Stage 2: 实际转换（自动生成轻量级特征）
+
+```bash
+python svc_inference.py \
+  --config configs/base.yaml \
+  --model chkpt/NO-NAME/NO-NAME_0015.pt \
+  --wave Unaccompanied.wav \
+  --spk data_svc/singer/NO-NAME.spk.npy \
+  --pit Unaccompanied001.csv \
+  --out Unaccompanied001_NO-NAME.wav \
+  --out-pit output_pitch.wav   # 可选：当推理结果出现奇怪的基频时，可用于调试确认
+
+```
+
+* `eng` / `deng` / `flat` 会**从输入的 wav 自动生成**（无需提前准备）。
+* `prd` 会自动寻找 Stage 1 中创建的 `.prd.npy`。
+
+### RMVPE 权重放置与路径问题（重要）
+
+如果在推理时的基频解析中使用 RMVPE，请注意以下几点：
+
+* 请根据需要将 RMVPE 模型放置在 `pretrain` 文件夹中。
+* 代码中引用的是 `pretrain/model.pt`（也会使用 `sovits/rmvpe/` 目录）。
+* 如果放置的是名为 `rmvpe.pt` 的文件，请在下载后重命名为 `model.pt`，或修改代码中的 `weight_path`。
+* 分发示例：
+* https://huggingface.co/RichardGR/so-vits-svc-pretrained/blob/main/rmvpe.pt
+* https://github.com/yxlllc/RMVPE/releases/download/230917/rmvpe.zip （解压后为 rmvpe.pt）
+
+
+* 因为脚本内部使用的是相对路径解析，**在 Linux 和 Windows 下的行为可能会有所不同**。如果在您的环境中无法运行，请修改代码中的路径设置。
+
+---
+
+## 使用方法（训练）
+
+### 数据集准备
+
+移除了原仓库中的静音丢弃处理。请注意不要留下过长（30秒以上）的训练源音频。
+
+在运行 `svc_preprocessing.py` 之前，您可以根据喜好使用附带的脚本（如 `prepare_length/build_global_29s.py`）。它会将原始数据按 RMS 分布或随机 best-of-n 均衡地组合成 29 秒以内的片段。
+如果数据集过大导致脚本运行过于缓慢，请使用 `prepare_length/build_random_29s_for_big_dataset` 中的脚本（不分配 RMS，仅按 wav 长度进行随机连接）。
+
+### 新增特征量的处理 (eng / deng / flat / prd)
+
+* prepare 文件夹中添加了 `periodicity` / `log_energy` / `delta_energy` / `spectral_flatness` 的准备脚本。
+* dataloader / train.py 侧已修改为将这些作为**强制输入**处理（没有关闭的标志）。
+* 操作流程与原仓库相似，支持在 SVC 团队提供的 pretrain 模型上进行追加训练。
+
+### 关于 base.yaml 特征量添加的注意事项
+
+* `segment_size` 的设置变得更加严格。建议一开始缩小保存间隔，寻找适合该数据集的最佳参数点，然后再进行正式训练。
+* 已确认提高 `accum_step` 会导致训练质量下降。
+
+基本使用方法请参考原仓库。
+
+---
+
+## 背景与假设
+
+现有的 whisper-vits-svc（以及类似的 SVC 模型）在音素、说话人身份和基频的再现方面表现优异。
+然而，我们假设以下要素因为被隐式地嵌入在潜在表示中，所以在训练过程中很容易被平均化：
+
+* 音量变化（动态）
+* 发声的爆发力/张力
+* 声带振动的稳定性
+* 呼吸成分/噪声成分（非周期性）
+
+这个分支的出发点是：**如果将这些信息作为显式特征提供给模型**，是否就能在转换后更好地保留“原始的演唱表现”？
+
+### 试错结果（观察到的效果）
+
+* 我们担心的“声音失真/暴走”现象，至少在我的数据集中并没有明显发生。
+* 相反，我觉得**转换结果的表现力得到了提升**。
+* 确认了一个现象：在呼吸成分较多的模型中，当极度降低 UV 阈值时，生成变得稳定且有所改善。
+* **令人高兴的副作用**：以前在无音部分容易产生的“啊”的残留发声噪音大幅减少。在 DAW 上基本不再需要进行降噪处理了！（当然，这不能消除转换源自带的噪音）。
+
+---
+
+## 本分支添加的特征量（Acoustic Dynamics）
+
+| 特征量 | 内容 | 提取来源 | 目的 |
+| --- | --- | --- | --- |
+| `log_energy` | 每帧的音量 (log RMS) | wav (RMS) | 整体动态 |
+| `delta_energy` | 音量变化速度 (中心差分+3f MA) | 从 log_energy | 爆发力・重音 |
+| `periodicity` | 周期性指标 (声音核心强度) | CREPE | 声带振动的稳定性 |
+| `spectral_flatness` | 频谱平坦度 (噪声/呼吸近似) | wav 每帧的 FFT | 呼吸・摩擦音・噪声感 |
+
+这些**不仅仅是简单的拼接输入 (concat)**，而是通过专用的 **Acoustic Dynamics Branch** 加算到 TextEncoder 内部。
+
+```python
+# models.py 摘录
+extra_proj = nn.Sequential(
+    nn.Conv1d(4, 64, 1),
+    nn.SiLU(),
+    nn.Conv1d(64, hidden_channels, 1),
+)
+...
+if eng is not None and deng is not None and prd is not None and flat is not None:
+    extra = self.extra_proj(torch.stack([eng, deng, prd, flat], dim=1)) * x_mask
+    x = x + extra
+
+```
+
+这种结构在尽可能保持与原模型兼容性的同时，利用了附加信息。
+
+---
+
+## 训练管道相关的变更
+
+除了引入追加特征量外，我们还对训练管道进行了重新审视。
+
+* **顺序处理所有训练音频:** 在原仓库中，训练时并不一定处理完所有的训练音频。本分支更改了处理方式，改为顺序扫描训练数据。这使得掌握训练进度变得更加容易，也能清楚了解哪些音频已经被学习过。
+* **更改为单 WAV 处理方式:**
+不再同时加载多个 WAV，流程变为：“读取 1 个 WAV → 内部切分为片段 → 顺序训练”。根据环境的不同，这可能有助于降低 VRAM 的使用量。
+* **以 WAV 为单位的进度管理:**
+将 `epoch` 和 `epoch_wav_step` 分开管理。这使得可以每处理一定数量的音频就进行保存，并能更精细地确认训练进度（同时也保留了传统的 epoch 保存功能）。
+
+---
+
+## 注意事项・已知限制・免责声明
+
+* 训练和推理都**仅在我个人的环境（Windows + 特定的数据集结构）下进行了充分验证**。重现性风险请自行承担。
+* 代码中可能还残留着一些粗糙的部分。欢迎报告错误和提供改进建议，但我可能只能回答“在我的环境确认范围内是可以运行的”。
+
+这项开发始于“能否保持转换前音频中包含的动态”以及“如果将呼吸成分作为特征量处理会怎样”的兴趣。AI 提出了特征量设计方案和代码，我通过选择、修改和验证推进了实现。
+因为这是一个没有编程专业知识的人依靠 AI 搭建的的分支，肯定有许多我无法处理的地方。如果遇到“无法运行”的情况，向您身边的 AI 或更有知识的人请教可能是最快的捷径。
+
+---
+
+## Credits & Respect
+
+对原仓库致以最深的感谢和敬意。
+
+* **PlayVoice whisper-vits-svc:** [https://github.com/PlayVoice/whisper-vits-svc](https://github.com/PlayVoice/whisper-vits-svc)
+* **so-vits-svc (RMVPE等):** [https://github.com/svc-develop-team/so-vits-svc](https://github.com/svc-develop-team/so-vits-svc)
+
+**見づ / Shidzuku**
+
+---
+
+# Original whisper-vits-svc Documentation
+
+<div align="center">
 <h1> Variational Inference with adversarial learning for end-to-end Singing Voice Conversion based on VITS </h1>
     
 [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/maxmax20160403/sovits5.0)

@@ -20,6 +20,8 @@ commands = [
    "python prepare/preprocess_speaker.py data_svc/waves-16k/ data_svc/speaker -t 0",
    "python prepare/preprocess_speaker_ave.py data_svc/speaker/ data_svc/singer",
    "python prepare/preprocess_spec.py -w data_svc/waves-32k/ -s data_svc/specs -t 0",
+   "python prepare/preprocess_energy.py -w data_svc/waves-32k/ -e data_svc/energy -t 0",
+   "python prepare/preprocess_flatness.py -w data_svc/waves-32k/ -f data_svc/flatness -t 0",
    "python prepare/preprocess_train.py",
    "python prepare/preprocess_zzz.py",
 ]
@@ -30,5 +32,5 @@ for command in commands:
 
    process = subprocess.Popen(command, shell=True)
    outcode = process.wait()
-   if (outcode):
+   if outcode:
       break

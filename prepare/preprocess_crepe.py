@@ -1,5 +1,8 @@
-import sys,os
+import sys
+import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 import librosa
 import torch
@@ -8,23 +11,28 @@ import argparse
 from tqdm import tqdm
 
 
-def compute_f0(filename, save, device):
+def compute_f0(filename, save, device, uv_th):
     audio, sr = librosa.load(filename, sr=16000)
     assert sr == 16000
+
     # Load audio
     audio = torch.tensor(np.copy(audio))[None]
     audio = audio + torch.randn_like(audio) * 0.001
+
     # Here we'll use a 10 millisecond hop length
     hop_length = 160
-    # Provide a sensible frequency range for your domain (upper limit is 2006 Hz)
-    # This would be a reasonable range for speech
+
+    # Provide a sensible frequency range for your domain
     fmin = 50
     fmax = 1000
+
     # Select a model capacity--one of "tiny" or "full"
     model = "full"
+
     # Pick a batch size that doesn't cause memory errors on your gpu
     batch_size = 512
-    # Compute pitch using first gpu
+
+    # Compute pitch + periodicity
     pitch, periodicity = crepe.predict(
         audio,
         sr,
@@ -36,34 +44,58 @@ def compute_f0(filename, save, device):
         device=device,
         return_periodicity=True,
     )
-    # CREPE was not trained on silent audio. some error on silent need filter.pitPath
+
+    # CREPE was not trained on silent audio.
+    # Some error on silent need filter.
     periodicity = crepe.filter.median(periodicity, 7)
     pitch = crepe.filter.mean(pitch, 5)
-    pitch[periodicity < 0.5] = 0
-    pitch = pitch.squeeze(0)
+
+    # voiced / unvoiced masking for pitch only
+    pitch[periodicity < uv_th] = 0
+
+    # squeeze to 1D numpy
+    pitch = pitch.squeeze(0).cpu().numpy().astype(np.float32)
+    periodicity = periodicity.squeeze(0).cpu().numpy().astype(np.float32)
+
+    # save pitch
     np.save(save, pitch, allow_pickle=False)
+
+    # save periodicity with same basename as pitch: *.prd.npy
+    prd_save = save.replace(".pit", ".prd")
+    np.save(prd_save, periodicity, allow_pickle=False)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-w", "--wav", help="wav", dest="wav", required=True)
     parser.add_argument("-p", "--pit", help="pit", dest="pit", required=True)
-
+    parser.add_argument(
+        "--uv-th",
+        type=float,
+        default=15e-6,
+        help="periodicity threshold for voiced/unvoiced decision (default: 15e-6)",
+    )
     args = parser.parse_args()
+
     print(args.wav)
     print(args.pit)
+    print(f"uv_th = {args.uv_th}")
 
     os.makedirs(args.pit, exist_ok=True)
+
     wavPath = args.wav
     pitPath = args.pit
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     for spks in os.listdir(wavPath):
         if os.path.isdir(f"./{wavPath}/{spks}"):
             os.makedirs(f"./{pitPath}/{spks}", exist_ok=True)
-
             files = [f for f in os.listdir(f"./{wavPath}/{spks}") if f.endswith(".wav")]
-            for file in tqdm(files, desc=f'Processing crepe {spks}'):
+            for file in tqdm(files, desc=f"Processing crepe {spks}"):
                 file = file[:-4]
-                compute_f0(f"{wavPath}/{spks}/{file}.wav", f"{pitPath}/{spks}/{file}.pit", device)
+                compute_f0(
+                    f"{wavPath}/{spks}/{file}.wav",
+                    f"{pitPath}/{spks}/{file}.pit",
+                    device,
+                    args.uv_th,
+                )

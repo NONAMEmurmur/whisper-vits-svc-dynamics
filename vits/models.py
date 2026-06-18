@@ -1,4 +1,3 @@
-
 import torch
 
 from torch import nn
@@ -24,9 +23,23 @@ class TextEncoder(nn.Module):
                  p_dropout):
         super().__init__()
         self.out_channels = out_channels
+        self.hidden_channels = hidden_channels
+
         self.pre = nn.Conv1d(in_channels, hidden_channels, kernel_size=5, padding=2)
         self.hub = nn.Conv1d(vec_channels, hidden_channels, kernel_size=5, padding=2)
         self.pit = nn.Embedding(256, hidden_channels)
+
+        # extra branch: [eng, deng, prd, flat] -> hidden_channels
+        self.extra_proj = nn.Sequential(
+            nn.Conv1d(4, 64, 1),
+            nn.SiLU(),
+            nn.Conv1d(64, hidden_channels, 1),
+        )
+
+        # keep pretrained behavior at step 0 as much as possible
+        nn.init.zeros_(self.extra_proj[-1].weight)
+        nn.init.zeros_(self.extra_proj[-1].bias)
+
         self.enc = attentions.Encoder(
             hidden_channels,
             filter_channels,
@@ -36,15 +49,25 @@ class TextEncoder(nn.Module):
             p_dropout)
         self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
-    def forward(self, x, x_lengths, v, f0):
+    def forward(self, x, x_lengths, v, f0, eng=None, deng=None, prd=None, flat=None):
         x = torch.transpose(x, 1, -1)  # [b, h, t]
         x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(
             x.dtype
         )
+
         x = self.pre(x) * x_mask
+
         v = torch.transpose(v, 1, -1)  # [b, h, t]
         v = self.hub(v) * x_mask
+
         x = x + v + self.pit(f0).transpose(1, 2)
+
+        # optional extra acoustic dynamics branch
+        if eng is not None and deng is not None and prd is not None and flat is not None:
+            extra = torch.stack([eng, deng, prd, flat], dim=1)  # [B, 4, T]
+            extra = self.extra_proj(extra) * x_mask
+            x = x + extra
+
         x = self.enc(x * x_mask, x_mask)
         stats = self.proj(x) * x_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)
@@ -180,12 +203,21 @@ class SynthesizerTrn(nn.Module):
         )
         self.dec = Generator(hp=hp)
 
-    def forward(self, ppg, vec, pit, spec, spk, ppg_l, spec_l):
+    def forward(self, ppg, vec, pit, spec, spk, ppg_l, spec_l, eng, deng, prd, flat):
         ppg = ppg + torch.randn_like(ppg) * 1  # Perturbation
         vec = vec + torch.randn_like(vec) * 2  # Perturbation
         g = self.emb_g(F.normalize(spk)).unsqueeze(-1)
+
         z_p, m_p, logs_p, ppg_mask, x = self.enc_p(
-            ppg, ppg_l, vec, f0=f0_to_coarse(pit))
+            ppg,
+            ppg_l,
+            vec,
+            f0=f0_to_coarse(pit),
+            eng=eng,
+            deng=deng,
+            prd=prd,
+            flat=flat,
+        )
         z_q, m_q, logs_q, spec_mask = self.enc_q(spec, spec_l, g=g)
 
         z_slice, pit_slice, ids_slice = commons.rand_slice_segments_with_pitch(
@@ -195,14 +227,23 @@ class SynthesizerTrn(nn.Module):
         # SNAC to flow
         z_f, logdet_f = self.flow(z_q, spec_mask, g=spk)
         z_r, logdet_r = self.flow(z_p, spec_mask, g=spk, reverse=True)
+
         # speaker
         spk_preds = self.speaker_classifier(x)
         return audio, ids_slice, spec_mask, (z_f, z_r, z_p, m_p, logs_p, z_q, m_q, logs_q, logdet_f, logdet_r), spk_preds
 
-    def infer(self, ppg, vec, pit, spk, ppg_l):
+    def infer(self, ppg, vec, pit, spk, ppg_l, eng, deng, prd, flat):
         ppg = ppg + torch.randn_like(ppg) * 0.0001  # Perturbation
         z_p, m_p, logs_p, ppg_mask, x = self.enc_p(
-            ppg, ppg_l, vec, f0=f0_to_coarse(pit))
+            ppg,
+            ppg_l,
+            vec,
+            f0=f0_to_coarse(pit),
+            eng=eng,
+            deng=deng,
+            prd=prd,
+            flat=flat,
+        )
         z, _ = self.flow(z_p, ppg_mask, g=spk, reverse=True)
         o = self.dec(spk, z * ppg_mask, f0=pit)
         return o
@@ -248,9 +289,17 @@ class SynthesizerInfer(nn.Module):
     def source2wav(self, source):
         return self.dec.source2wav(source)
 
-    def inference(self, ppg, vec, pit, spk, ppg_l, source):
+    def inference(self, ppg, vec, pit, spk, ppg_l, source, eng, deng, prd, flat):
         z_p, m_p, logs_p, ppg_mask, x = self.enc_p(
-            ppg, ppg_l, vec, f0=f0_to_coarse(pit))
+            ppg,
+            ppg_l,
+            vec,
+            f0=f0_to_coarse(pit),
+            eng=eng,
+            deng=deng,
+            prd=prd,
+            flat=flat,
+        )
         z, _ = self.flow(z_p, ppg_mask, g=spk, reverse=True)
         o = self.dec.inference(spk, z * ppg_mask, source)
         return o
