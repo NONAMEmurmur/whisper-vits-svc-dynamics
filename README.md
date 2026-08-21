@@ -26,6 +26,20 @@ In the original repository, inference (pitch extraction and audio generation) co
 Therefore, this fork heavily modifies the workflow to a **practical two-stage inference**:
 *(The one-shot mode omitting `--pit` is still available, but two-stage inference is strongly recommended for pitch reuse and adjustment.)*
 
+### UI (recommended)
+
+```bash
+python webui.py
+```
+
+A browser window opens. Pick a working folder, extract pitch, then convert.
+
+* Pitch CSV and `.prd.npy` stay in the working folder, so you can iterate on `--uv-th`
+* If you keep multiple training folders, switch them in the Convert tab (config / speakers are loaded from that folder)
+* Do not use the upstream `app.py`; it is one-shot inference
+
+The CLI equivalent is below.
+
 ### Stage 1: Pitch + Periodicity Extraction (Run heavy tasks only once)
 
 ```bash

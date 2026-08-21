@@ -1,0 +1,14 @@
+webui_settings.json
+outputs/
+__pycache__/
+*.pyc
+.venv/
+venv/
+crepe/assets/full.pth
+pretrain/*.pt
+whisper_pretrain/*.pt
+hubert_pretrain/*.pt
+speaker_pretrain/*.tar
+vits_pretrain/*.pth
+chkpt/
+data_svc/
