@@ -14,6 +14,11 @@
 
 如果您只需要原版的 whisper-vits-svc，请使用原仓库。此分支在显式提供动态特征方面具有强烈的主观意见（opinionated）。
 
+## 示例
+
+* [样例模型](https://drive.google.com/drive/folders/1F4sxXkNIiAXRr6UQ8h2G7phi0YJX_EKX?usp=sharing) — 用本分支训练的作者音色模型
+* [试听音源](https://drive.google.com/file/d/1ECoGQt2o0aBRhZKCnvA5s3jzZ1Zny3p3/view?usp=sharing) — 使用本分支训练的模型进行推理，并将其用于 AI 生成的原创曲
+
 ---
 
 ## 使用方法（推理） — 推荐两阶段推理

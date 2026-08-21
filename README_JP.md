@@ -14,6 +14,11 @@
 
 vanilla の whisper-vits-svc が欲しい場合は、元リポジトリを使ってください。このforkは dynamics を明示的に与える方向に強く opinionated したものです。
 
+## 作例
+
+* [サンプル](https://drive.google.com/drive/folders/1F4sxXkNIiAXRr6UQ8h2G7phi0YJX_EKX?usp=sharing) — このforkで学習した、作者の声のモデル
+* [試聴音源](https://drive.google.com/file/d/1ECoGQt2o0aBRhZKCnvA5s3jzZ1Zny3p3/view?usp=sharing) — このforkで学習したモデルで推論した音声を使った、AI生成のオリジナル曲
+
 ---
 
 ## 使い方（推論） — 二段階推論推奨

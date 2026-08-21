@@ -14,6 +14,11 @@ Rather, it aims to **explicitly re-inject "performance information"—which exis
 
 If you want the vanilla whisper-vits-svc, please use the original repository. This fork is heavily opinionated towards explicitly providing dynamics.
 
+## Examples
+
+* [Sample model](https://drive.google.com/drive/folders/1F4sxXkNIiAXRr6UQ8h2G7phi0YJX_EKX?usp=sharing) — A model of the author's voice trained with this fork
+* [Demo track](https://drive.google.com/file/d/1ECoGQt2o0aBRhZKCnvA5s3jzZ1Zny3p3/view?usp=sharing) — An AI-generated original that uses vocals inferred from a model trained with this fork
+
 ---
 
 ## Usage (Inference) - Two-Stage Inference Recommended
