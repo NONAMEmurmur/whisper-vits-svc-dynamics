@@ -19,6 +19,11 @@
 * [样例模型](https://drive.google.com/drive/folders/1F4sxXkNIiAXRr6UQ8h2G7phi0YJX_EKX?usp=sharing) — 用本分支训练的作者音色模型
 * [试听音源](https://drive.google.com/file/d/1ECoGQt2o0aBRhZKCnvA5s3jzZ1Zny3p3/view?usp=sharing) — 使用本分支训练的模型进行推理，并将其用于 AI 生成的原创曲
 
+Hugging Face 镜像（与 Google Drive 中的文件内容相同）：
+[Hugging Face](https://huggingface.co/NONAMEmurmur/lheure-Non-Nom-SVC-Sample-Model)
+
+中国大陆用户如果访问 Hugging Face 较慢，也可以尝试使用 HF-Mirror。
+
 ---
 
 ## 使用方法（推理） — 推荐两阶段推理

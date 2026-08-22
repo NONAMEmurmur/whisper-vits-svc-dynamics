@@ -1,0 +1,45 @@
+短いファイルが大量に残って救済が必要な場合は(稀にある)
+
+
+コマンドプロンプトなどを試してみてください(1行)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$src=(Get-Location).Path; $small=Join-Path $src '_short_under25'; $out=Join-Path $src '_short_joined_29s'; New-Item -ItemType Directory -Force -Path $small,$out | Out-Null; Get-ChildItem $src -Filter 'sample_*.wav' -File | Sort-Object Name | Where-Object { $d=[double](& ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $_.FullName); $d -lt 25 } | Move-Item -Destination $small -Force; $i=1; $sum=0.0; $buf=@(); function Flush { if ($script:buf.Count -eq 0) { return }; $list=Join-Path $script:out ('list_{0:00000}.txt' -f $script:i); $lines=$script:buf | ForEach-Object { 'file ''' + ($_.FullName -replace '\\','/') + '''' }; [IO.File]::WriteAllLines($list,$lines,(New-Object Text.UTF8Encoding $false)); & ffmpeg -y -f concat -safe 0 -i $list -c copy (Join-Path $script:out ('short_join_{0:00000}.wav' -f $script:i)); Remove-Item $list; $script:i++; $script:sum=0.0; $script:buf=@() }; Get-ChildItem $small -Filter '*.wav' -File | Sort-Object Name | ForEach-Object { $d=[double](& ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $_.FullName); if (($script:sum + $d) -gt 29 -and $script:buf.Count -gt 0) { Flush }; $script:buf += $_; $script:sum += $d }; Flush"
+
+やっていることは
+
+現在フォルダの sample_*.wav を見る
+25秒未満のものだけ _short_under25 に移動
+_short_under25 の中身をファイル名順に読む
+29秒を超えない範囲で先頭から詰める
+_short_joined_29s に short_join_00001.wav ... として出す
+
+なので、環境違う、他の処理やりたい、打つ前に読みたいという人は
+あなたのAIに聞いてください。
+
+
+
+ちなみに
+
+$d -lt 25
+
+たとえば 10秒未満だけ救済なら、
+
+$d -lt 10
+
+20秒未満だけ救済なら、
+
+$d -lt 20
+
+出力の上限を29秒じゃなく30秒にしたいなら、ここを変えてください。
+
+-gt 29
+
+を
+
+-gt 30
+
+にする。
+
+
+同じスクリプトからを通っていて
+サンプリングレート・チャンネル数・形式が揃っている前提になています。
+再エンコ必要なものが交じる場合もお近くの知識人またはAIに聞いてみてください。
